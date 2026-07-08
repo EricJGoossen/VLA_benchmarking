@@ -64,7 +64,7 @@ class EvalControl:
                 scene_video.append(curr_obs["scene_image"])
                 wrist_video.append(curr_obs["wrist_image"])
 
-                if actions_from_chunk_completed == 0 or actions_from_chunk_completed >= self.args.open_loop_horizon:
+                if actions_from_chunk_completed == 0 or actions_from_chunk_completed >= self.policy_client.open_loop_horizon:
                     actions_from_chunk_completed = 0
 
                     pred_action_chunk = self.policy_client.infer(curr_obs, instruction)
@@ -141,8 +141,8 @@ class EvalControl:
 
         eval_params = {
             "task_name": config_params["task_name"],
-            "policy_name": self.args.policy,
-            "policy_checkpoint": self.policy_client.get_policy_checkpoint(),
+            "policy_name": self.policy_client.name,
+            "policy_checkpoint": self.policy_client.policy_checkpoint,
             "instructions": config_params["instructions"],
             "num_rollouts": config_params["num_rollouts"],
             "max_step_score": config_params.get("max_step_score", 0),

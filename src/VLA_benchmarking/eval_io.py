@@ -4,6 +4,14 @@ import numpy as np
 import yaml
 from moviepy.editor import ImageSequenceClip
 
+POLICY_CONFIG_KEYS = [
+    "config_type",
+    "policy_name",
+    "policy_checkpoint",
+    "open_loop_horizon",
+    "action_space",
+    "gripper_space",
+]
 
 EPISODE_CONFIG_KEYS = [
     "config_type",
@@ -51,16 +59,6 @@ SCORE_RESULT_KEYS = [
     "recall_score",
     "comments",
 ]
-
-POLICY_CONFIG_KEYS = [
-    "config_type",
-    "policy_name",
-    "policy_checkpoint",
-    "remote_host",
-    "remote_port",
-    "open_loop_horizon",
-]
-
 
 class RolloutStatus(Enum):
     """Status of a rollout entry in the eval results file, based on which fields are filled in."""
