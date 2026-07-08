@@ -63,7 +63,7 @@ def _check_cameras_exist(env: RobotEnv, args: Args) -> None:
 def main(args: Args):
     policy_client = POLICY_CLIENTS[args.policy](args.remote_host, args.remote_port)
 
-    env = RobotEnv(action_space=policy_client.action_space(), gripper_action_space=policy_client.gripper_space())
+    env = RobotEnv(action_space=policy_client.action_space, gripper_action_space=policy_client.gripper_space)
     print("Created the droid env!")
 
     _check_cameras_exist(env, args)

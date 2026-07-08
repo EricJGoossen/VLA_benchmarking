@@ -1,0 +1,8 @@
+config_type: "policy"
+policy_name: MolmoAct2
+policy_checkpoint: "https://huggingface.co/allenai/MolmoAct2-DROID"
+remote_host: localhost
+remote_port: 8000
+open_loop_horizon: 8
+action_space: "joint_position"
+gripper_space: "position"

@@ -2,18 +2,18 @@ import tqdm
 import datetime
 import time
 import numpy as np
-from droid.robot_env import RobotEnv
+from third_party.droid.robot_env import RobotEnv
 
-from scripts.policy_interface.policy_clients import PolicyClient
-from scripts.policy_interface.eval_io import (
+from policy_clients import PolicyClient
+from eval_io import (
     save_rollout_video,
     write_eval_results,
     write_rollout_results,
     write_score_results,
     RolloutStatus,
 )
-from scripts.policy_interface.eval_planning import EpisodePlanEntry, EvaluationPlan
-from scripts.policy_interface.eval_ui import update_status, start_rollout, get_score_input, get_test_instruction
+from eval_planning import EpisodePlanEntry, EvaluationPlan
+from eval_ui import update_status, start_rollout, get_score_input, get_test_instruction
 
 
 # DROID data collection frequency -- we slow down execution to match this frequency

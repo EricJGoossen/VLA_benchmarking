@@ -11,7 +11,7 @@ plan and runs whatever isn't complete yet.
 import dataclasses
 import os
 
-from scripts.policy_interface.eval_io import (
+from eval_io import (
     get_rollout_statuses,
     is_episode_complete,
     load_config,
@@ -68,7 +68,7 @@ def build_plan(config_path: str, policy: str, results_dir: str) -> EvaluationPla
     config = load_config(config_path)
 
     if config["config_type"] == "episode":
-        episode_dir = os.path.join(results_dir, f"{config['task_name']}_{policy}")
+        episode_dir = os.path.join(results_dir, policy, f"{config['task_name']}_episode0")
         entry = _build_episode_plan_entry(config_path, config, episode_dir)
         return EvaluationPlan(config_type="episode", evaluation_name=None, episodes=[entry])
 

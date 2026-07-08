@@ -12,14 +12,38 @@ import msgpack_numpy as mnp
 import requests
 import zmq
 
-from openpi_client import image_tools
-from openpi_client import websocket_client_policy
+from third_party.openpi import image_tools
+from third_party.openpi import websocket_client_policy
 import json_numpy
 
 json_numpy.patch()
 
 
 class PolicyClient(ABC):
+    action_space: str = ""
+    gripper_space: str = ""
+
+    policy_checkpoint: str = ""
+    open_loop_horizon: int = 8
+
+    @classmethod
+    def from_config(cls, config: dict) -> "PolicyClient":
+        """Instantiate a client from a loaded policy config dict.
+
+        host/port come from the YAML here; use set_host/set_port afterward
+        to apply CLI overrides.
+        """
+        client = cls(config["remote_host"], config["remote_port"])
+        client.policy_checkpoint = config["policy_checkpoint"]
+        client.open_loop_horizon = config["open_loop_horizon"]
+        return client
+
+    def set_host(self, host: str) -> None:
+        self.host = host
+
+    def set_port(self, port: int) -> None:
+        self.port = port
+
     @abstractmethod
     def connect(self):
         pass
@@ -106,15 +130,6 @@ class OpenPiClient(PolicyClient):
                 actions = self.client.infer(request_data)["actions"]
                 return np.clip(actions, -1, 1)
 
-    def action_space(self) -> str:
-        return "joint_velocity"
-
-    def gripper_space(self) -> str:
-        return "position"
-    
-    def get_policy_checkpoint(self) -> str:
-        return ''
-
 
 class MolmoActClient(PolicyClient):
     """Client for MolmoAct policies served via an HTTP REST server."""
@@ -158,15 +173,6 @@ class MolmoActClient(PolicyClient):
             result = json_numpy.loads(response.text)
 
         return result["actions"]
-
-    def action_space(self) -> str:
-        return "joint_position"
-
-    def gripper_space(self) -> str:
-        return "position"
-    
-    def get_policy_checkpoint(self) -> str:
-        return ''
 
 
 class GRootClient(PolicyClient):
@@ -231,15 +237,6 @@ class GRootClient(PolicyClient):
             action_chunk["joint_position"][0],
             action_chunk["gripper_position"][0],
         ], axis=-1)
-
-    def action_space(self) -> str:
-        return "joint_position"
-
-    def gripper_space(self) -> str:
-        return "position"
-    
-    def get_policy_checkpoint(self) -> str:
-        return ''
 
     def _format_observation(self, observation: dict, instruction: str) -> dict:
         """Convert the standard observation dict into the nested format the GR00T server expects."""
