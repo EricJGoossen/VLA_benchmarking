@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
-from dataclasses import asdict, is_dataclass
+from dataclasses import asdict, dataclass, field, fields, is_dataclass
 from enum import Enum
-from typing import Any, Callable
+from typing import Any, ClassVar
 from collections import deque
 import contextlib
 import functools
@@ -12,14 +12,66 @@ import msgpack_numpy as mnp
 import requests
 import zmq
 
-from openpi_client import image_tools
-from openpi_client import websocket_client_policy
+from third_party.openpi import image_tools
+from third_party.openpi import websocket_client_policy
 import json_numpy
 
 json_numpy.patch()
 
 
+from eval_io import load_policy_config
+
+@dataclass
 class PolicyClient(ABC):
+    """Base class for all policy clients."""
+
+    action_space: str = ""
+    gripper_space: str = ""
+    policy_checkpoint: str = ""
+    open_loop_horizon: int = 8
+    host: str = "localhost"
+    port: int = 8000
+    name: str = ""
+
+    # Class-level registry shared by all subclasses.
+    _registry: ClassVar[dict[str, type["PolicyClient"]]] = {}
+
+    def __init_subclass__(cls, *, policy_name: str | list[str] | None = None, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if policy_name is not None:
+            names = [policy_name] if isinstance(policy_name, str) else policy_name
+            for name in names:
+                PolicyClient._registry[name] = cls
+
+    @classmethod
+    def from_config(cls, config_path: str) -> "PolicyClient":
+        """Instantiate the right client subclass from a loaded policy config dict."""
+        config = load_policy_config(config_path)
+        target_cls = cls._registry.get(config["policy_name"])
+        if target_cls is None:
+            raise ValueError(
+                f"Unknown policy_name {config['policy_name']!r}. "
+                f"Registered: {sorted(cls._registry)}"
+            )
+
+        kwargs = {k: v for k, v in config.items() if k != "policy_name"}
+
+        valid_names = {f.name for f in fields(target_cls) if f.init}
+        unknown = set(kwargs) - valid_names
+        if unknown:
+            raise ValueError(
+                f"{target_cls.__name__} does not accept field(s): {sorted(unknown)}. "
+                f"Valid fields: {sorted(valid_names)}"
+            )
+
+        return target_cls(**kwargs)
+
+    def set_host(self, host: str) -> None:
+        self.host = host
+
+    def set_port(self, port: int) -> None:
+        self.port = port
+
     @abstractmethod
     def connect(self):
         pass
@@ -31,19 +83,6 @@ class PolicyClient(ABC):
 
     @abstractmethod
     def disconnect(self):
-        pass
-
-    @abstractmethod
-    def action_space(self) -> str:
-        pass
-
-    @abstractmethod
-    def gripper_space(self) -> str:
-        pass
-
-    @abstractmethod
-    def get_policy_checkpoint(self) -> str:
-        """Return a string identifier for the current policy checkpoint, to be recorded in eval results."""
         pass
 
     @contextlib.contextmanager
@@ -65,23 +104,24 @@ class PolicyClient(ABC):
                 raise KeyboardInterrupt
 
 
-class OpenPiClient(PolicyClient):
+@dataclass
+class OpenPiClient(PolicyClient, policy_name=["pi0", "pi05"]):
     """Client for pi0 / pi0.5 policies served via the openpi WebSocket server."""
 
-    def __init__(self, host: str, port: int):
-        self.host = host
-        self.port = port
-        self.client = None
+    # Internal connection object — not a constructor arg, not shown in repr.
+    _client: websocket_client_policy.WebsocketClientPolicy | None = field(
+        default=None, init=False, repr=False
+    )
 
     def connect(self):
-        if self.client is None:
-            self.client = websocket_client_policy.WebsocketClientPolicy(self.host, self.port)
+        if self._client is None:
+            self._client = websocket_client_policy.WebsocketClientPolicy(self.host, self.port)
 
     def disconnect(self):
-        self.client = None
+        self._client = None
 
     def infer(self, observation: dict, instruction: str) -> np.ndarray:
-        if self.client is None:
+        if self._client is None:
             raise RuntimeError("Client is not connected. Call connect() first.")
 
         request_data = {
@@ -98,31 +138,22 @@ class OpenPiClient(PolicyClient):
 
         with self.prevent_keyboard_interrupt():
             try:
-                actions = self.client.infer(request_data)["actions"]
+                actions = self._client.infer(request_data)["actions"]
                 return np.clip(actions, -1, 1)
             except Exception:
                 print("Disconnected — attempting to reconnect.")
                 self.connect()
-                actions = self.client.infer(request_data)["actions"]
+                actions = self._client.infer(request_data)["actions"]
                 return np.clip(actions, -1, 1)
 
-    def action_space(self) -> str:
-        return "joint_velocity"
 
-    def gripper_space(self) -> str:
-        return "position"
-    
-    def get_policy_checkpoint(self) -> str:
-        return ''
-
-
-class MolmoActClient(PolicyClient):
+@dataclass
+class MolmoActClient(PolicyClient, policy_name="molmoact"):
     """Client for MolmoAct policies served via an HTTP REST server."""
 
-    def __init__(self, host: str, port: int):
-        self.host = host
-        self.port = port
-        self._base_url = f"http://{host}:{port}"
+    @property
+    def _base_url(self) -> str:
+        return f"http://{self.host}:{self.port}"
 
     def connect(self):
         try:
@@ -159,66 +190,64 @@ class MolmoActClient(PolicyClient):
 
         return result["actions"]
 
-    def action_space(self) -> str:
-        return "joint_position"
 
-    def gripper_space(self) -> str:
-        return "position"
-    
-    def get_policy_checkpoint(self) -> str:
-        return ''
+@dataclass
+class _GrootConnection:
+    """Internal connection state for GrootClient — not user-facing config."""
+
+    context: zmq.Context = field(default_factory=zmq.Context)
+    socket: "zmq.Socket | None" = None
+    modality_keys: dict | None = None
+    video_delta: list | None = None
+    frame_buffer: deque | None = None
 
 
-class GRootClient(PolicyClient):
+@dataclass
+class GrootClient(PolicyClient, policy_name="gr00t"):
     """Client for GR00T policies served via a ZMQ server."""
 
-    _EEF_ROTATION_CORRECT = np.array(
+    _EEF_ROTATION_CORRECT: ClassVar[np.ndarray] = np.array(
         [[0, 0, -1], [-1, 0, 0], [0, 1, 0]], dtype=np.float64
     )
-    _IMAGE_RESOLUTION = (180, 320)  # (H, W)
+    _IMAGE_RESOLUTION: ClassVar[tuple[int, int]] = (180, 320)  # (H, W)
 
-    def __init__(self, host: str, port: int, timeout_ms: int = 15000):
-        self.host = host
-        self.port = port
-        self.timeout_ms = timeout_ms
-        self._context = zmq.Context()
-        self._socket = None
-        self._modality_keys = None
-        self._video_delta = None
+    timeout_ms: int = 15000
+
+    _conn: _GrootConnection = field(default_factory=_GrootConnection, init=False, repr=False)
 
     def connect(self):
-        self._socket = self._context.socket(zmq.REQ)
-        self._socket.setsockopt(zmq.RCVTIMEO, self.timeout_ms)
-        self._socket.setsockopt(zmq.SNDTIMEO, self.timeout_ms)
-        self._socket.connect(f"tcp://{self.host}:{self.port}")
+        self._conn.socket = self._conn.context.socket(zmq.REQ)
+        self._conn.socket.setsockopt(zmq.RCVTIMEO, self.timeout_ms)
+        self._conn.socket.setsockopt(zmq.SNDTIMEO, self.timeout_ms)
+        self._conn.socket.connect(f"tcp://{self.host}:{self.port}")
 
         self._send({"endpoint": "ping"})
 
         modality_config = self._send({"endpoint": "get_modality_config"})
-        self._modality_keys = {
+        self._conn.modality_keys = {
             modality: modality_config[modality]["as_json"]["modality_keys"]
             for modality in ["video", "state", "action", "language"]
         }
-        self._video_delta = modality_config["video"]["as_json"]["delta_indices"]
-        video_history_len = max(-min(self._video_delta), 0) + 1 if self._video_delta else 1
-        self._frame_buffer = deque(maxlen=video_history_len)
+        self._conn.video_delta = modality_config["video"]["as_json"]["delta_indices"]
+        video_history_len = max(-min(self._conn.video_delta), 0) + 1 if self._conn.video_delta else 1
+        self._conn.frame_buffer = deque(maxlen=video_history_len)
 
     def disconnect(self):
-        if self._socket is not None:
-            self._socket.close()
-            self._socket = None
-        self._modality_keys = None
-        self._video_delta = None
-        self._frame_buffer = None
+        if self._conn.socket is not None:
+            self._conn.socket.close()
+            self._conn.socket = None
+        self._conn.modality_keys = None
+        self._conn.video_delta = None
+        self._conn.frame_buffer = None
 
     def infer(self, observation: dict, instruction: str) -> np.ndarray:
-        if self._socket is None or self._modality_keys is None or self._frame_buffer is None:
+        if self._conn.socket is None or self._conn.modality_keys is None or self._conn.frame_buffer is None:
             raise RuntimeError("Client is not connected. Call connect() first.")
 
         H, W = self._IMAGE_RESOLUTION
         ext_image = image_tools.resize_with_pad(observation["scene_image"], H, W)
         wrist_image = image_tools.resize_with_pad(observation["wrist_image"], H, W)
-        self._frame_buffer.append({"ext": ext_image, "wrist": wrist_image})
+        self._conn.frame_buffer.append({"ext": ext_image, "wrist": wrist_image})
 
         obs = self._format_observation(observation, instruction)
 
@@ -232,34 +261,23 @@ class GRootClient(PolicyClient):
             action_chunk["gripper_position"][0],
         ], axis=-1)
 
-    def action_space(self) -> str:
-        return "joint_position"
-
-    def gripper_space(self) -> str:
-        return "position"
-    
-    def get_policy_checkpoint(self) -> str:
-        return ''
-
     def _format_observation(self, observation: dict, instruction: str) -> dict:
         """Convert the standard observation dict into the nested format the GR00T server expects."""
         obs = {"video": {}, "state": {}, "language": {}}
-        if self._frame_buffer is None:
+        if self._conn.frame_buffer is None:
             raise RuntimeError("Frame buffer is not initialized.")
-        if self._modality_keys is None:
+        if self._conn.modality_keys is None:
             raise RuntimeError("Modality keys are not initialized.")
 
-        video_T = len(self._video_delta) if self._video_delta is not None else 1
-        for key in self._modality_keys["video"]:
+        video_T = len(self._conn.video_delta) if self._conn.video_delta is not None else 1
+        for key in self._conn.modality_keys["video"]:
             if video_T == 1:
-                
-                frame = self._frame_buffer[-1]
-                
+                frame = self._conn.frame_buffer[-1]
                 img = frame["wrist"] if "wrist" in key else frame["ext"]
                 obs["video"][key] = img[None, None]
             else:
-                hist = self._frame_buffer[0]
-                cur = self._frame_buffer[-1]
+                hist = self._conn.frame_buffer[0]
+                cur = self._conn.frame_buffer[-1]
                 if hist is None or cur is None:
                     raise RuntimeError("Frame history contains None; cannot format video observation.")
                 if "wrist" in key:
@@ -272,11 +290,11 @@ class GRootClient(PolicyClient):
             "gripper_position": observation["gripper_position"],
             "joint_position": observation["joint_position"],
         }
-        for key in self._modality_keys["state"]:
+        for key in self._conn.modality_keys["state"]:
             val = state_source[key][None, None, ...].astype(np.float32)
             obs["state"][key] = val
 
-        lang_key = self._modality_keys["language"][0]
+        lang_key = self._conn.modality_keys["language"][0]
         obs["language"][lang_key] = [[instruction]]
 
         return obs
@@ -286,15 +304,15 @@ class GRootClient(PolicyClient):
         """Convert XYZ + extrinsic XYZ Euler to XYZ + rot6d, corrected for OXE DROID convention."""
         from scipy.spatial.transform import Rotation
         c = np.asarray(cartesian_position, dtype=np.float64).reshape(6)
-        rot_mat = Rotation.from_euler("XYZ", c[3:6]).as_matrix() @ GRootClient._EEF_ROTATION_CORRECT
+        rot_mat = Rotation.from_euler("XYZ", c[3:6]).as_matrix() @ GrootClient._EEF_ROTATION_CORRECT
         rot6d = rot_mat[:2, :].reshape(6)
         return np.concatenate([c[:3], rot6d]).astype(np.float32)
 
     def _send(self, request: dict):
-        if self._socket is None:
+        if self._conn.socket is None:
             raise RuntimeError("Client is not connected. Call connect() first.")
-        self._socket.send(GRootClient._MsgSerializer.to_bytes(request))
-        response = GRootClient._MsgSerializer.from_bytes(self._socket.recv())
+        self._conn.socket.send(GrootClient._MsgSerializer.to_bytes(request))
+        response = GrootClient._MsgSerializer.from_bytes(self._conn.socket.recv())
         if isinstance(response, dict) and "error" in response:
             raise RuntimeError(f"GR00T server error: {response['error']}")
         return response
@@ -305,16 +323,16 @@ class GRootClient(PolicyClient):
         @staticmethod
         def to_bytes(data: Any) -> bytes:
             default = functools.partial(
-                GRootClient._MsgSerializer._safe_encode,
-                chain=GRootClient._MsgSerializer._encode_custom,
+                GrootClient._MsgSerializer._safe_encode,
+                chain=GrootClient._MsgSerializer._encode_custom,
             )
             return msgpack.packb(data, default=default) or b""
 
         @staticmethod
         def from_bytes(data: bytes) -> Any:
             object_hook = functools.partial(
-                GRootClient._MsgSerializer._safe_decode,
-                chain=GRootClient._MsgSerializer._decode_custom,
+                GrootClient._MsgSerializer._safe_decode,
+                chain=GrootClient._MsgSerializer._decode_custom,
             )
             return msgpack.unpackb(data, object_hook=object_hook, raw=False)
 
@@ -354,12 +372,3 @@ class GRootClient(PolicyClient):
                     raise ValueError("Malformed dataclass payload: 'fields' missing.")
                 return obj[key]
             return obj
-
-
-# Registry: map policy names to their client classes.
-POLICY_CLIENTS: "dict[str, Callable[[str, int], PolicyClient]]" = {
-    "pi0": OpenPiClient,
-    "pi05": OpenPiClient,
-    "molmoact": MolmoActClient,
-    "groot": GRootClient,
-}

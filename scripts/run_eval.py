@@ -1,20 +1,19 @@
 import datetime
 import faulthandler
 import os
+from VLA_benchmarking.policy_clients import PolicyClient
+from VLA_benchmarking.system_config import Args
+from VLA_benchmarking.eval_control import EvalControl
+from VLA_benchmarking.eval_io import load_config
+from VLA_benchmarking.eval_planning import build_plan
 import tyro
 from droid.robot_env import RobotEnv
-
-from scripts.policy_interface.system_config import Args
-from scripts.policy_interface.policy_clients import POLICY_CLIENTS
-from scripts.policy_interface.eval_io import load_config
-from scripts.policy_interface.eval_planning import build_plan
-from scripts.policy_interface.eval_control import EvalControl
 
 
 faulthandler.enable()
 
 
-def _resolve_results_dir(args: Args, config: dict) -> str:
+def _resolve_results_dir(policy_name: str, config: dict) -> str:
     """Return the results directory to use: args.results_dir if given,
     otherwise a timestamped fallback under args.default_results_dir.
     """
@@ -26,7 +25,7 @@ def _resolve_results_dir(args: Args, config: dict) -> str:
     if config["config_type"] == "evaluation":
         name = config["evaluation_name"]
     else:
-        name = f"{args.policy}_{config['task_name']}"
+        name = f"{policy_name}_{config['task_name']}"
 
     return os.path.join(args.default_results_dir, f"{name}_{timestamp}")
 
@@ -61,9 +60,12 @@ def _check_cameras_exist(env: RobotEnv, args: Args) -> None:
 
 
 def main(args: Args):
-    policy_client = POLICY_CLIENTS[args.policy](args.remote_host, args.remote_port)
+    policy_client = PolicyClient.from_config(args.policy_config)
 
-    env = RobotEnv(action_space=policy_client.action_space(), gripper_action_space=policy_client.gripper_space())
+    policy_client.host = args.server_host or policy_client.host
+    policy_client.port = args.server_port or policy_client.port
+
+    env = RobotEnv(action_space=policy_client.action_space, gripper_action_space=policy_client.gripper_space)
     print("Created the droid env!")
 
     _check_cameras_exist(env, args)
@@ -78,9 +80,9 @@ def main(args: Args):
         return
 
     config = load_config(args.config_file)
-    results_dir = _resolve_results_dir(args, config)
+    results_dir = _resolve_results_dir(policy_client.name, config)
 
-    plan = build_plan(args.config_file, args.policy, results_dir)
+    plan = build_plan(args.config_file, policy_client.name, results_dir)
 
     try:
         _run_plan(controller, plan)

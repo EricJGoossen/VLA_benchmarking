@@ -1,0 +1,9 @@
+config_type: "policy"
+policy_name: Gr00t
+policy_checkpoint: "https://huggingface.co/nvidia/GR00T-N1.7-DROID"
+default_remote_host: localhost
+default_remote_port: 8000
+open_loop_horizon: 8
+timeout_ms: 15000
+action_space: "joint_position"
+gripper_space: "position"

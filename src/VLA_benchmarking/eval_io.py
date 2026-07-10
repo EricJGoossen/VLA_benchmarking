@@ -4,6 +4,14 @@ import numpy as np
 import yaml
 from moviepy.editor import ImageSequenceClip
 
+POLICY_CONFIG_KEYS = [
+    "config_type",
+    "policy_name",
+    "policy_checkpoint",
+    "open_loop_horizon",
+    "action_space",
+    "gripper_space",
+]
 
 EPISODE_CONFIG_KEYS = [
     "config_type",
@@ -13,8 +21,6 @@ EPISODE_CONFIG_KEYS = [
     "num_rollouts",
     "max_step_score",
     "max_recall_score",
-    "record_scene_video",
-    "record_wrist_video",
 ]
 
 EVALUATION_CONFIG_KEYS = [
@@ -51,7 +57,6 @@ SCORE_RESULT_KEYS = [
     "recall_score",
     "comments",
 ]
-
 
 class RolloutStatus(Enum):
     """Status of a rollout entry in the eval results file, based on which fields are filled in."""
@@ -160,6 +165,21 @@ def load_config(path: str) -> dict:
 
     return config
 
+def load_policy_config(path: str) -> dict:
+    """Load and validate a policy config YAML (config_type: 'policy')."""
+    config = _load_yaml_file(path, check_rollouts=False)
+
+    if config.get("config_type") != "policy":
+        raise ValueError(
+            f"Policy config at '{path}' must have config_type 'policy', "
+            f"got {config.get('config_type')!r}."
+        )
+    for key in POLICY_CONFIG_KEYS:
+        if key not in config:
+            raise ValueError(f"Missing required policy config key: '{key}'")
+
+    return config
+
 
 def write_eval_results(folder_path: str, filename: str, results: dict) -> None:
     """Create the eval results file with config fields and an empty rollouts dict.
@@ -253,6 +273,7 @@ def save_rollout_video(folder_path: str, filename: str, video_frames: list, fps:
     ImageSequenceClip(list(video), fps=fps).write_videofile(save_path, codec="libx264")
 
     return os.path.basename(save_path)
+
 
 def _load_yaml_file(path: str, check_rollouts: bool = True) -> dict:
     """Load an existing YAML file, raising if it's missing or malformed."""

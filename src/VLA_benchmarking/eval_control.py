@@ -2,18 +2,20 @@ import tqdm
 import datetime
 import time
 import numpy as np
-from droid.robot_env import RobotEnv
+from third_party.MolmoAct2.examples.yam.launch_yaml_eval_molmoact import Args
+from third_party.droid.robot_env import RobotEnv
 
-from scripts.policy_interface.policy_clients import PolicyClient
-from scripts.policy_interface.eval_io import (
+from policy_clients import PolicyClient
+from eval_io import (
     save_rollout_video,
     write_eval_results,
     write_rollout_results,
     write_score_results,
     RolloutStatus,
 )
-from scripts.policy_interface.eval_planning import EpisodePlanEntry, EvaluationPlan
-from scripts.policy_interface.eval_ui import update_status, start_rollout, get_score_input, get_test_instruction
+from eval_planning import EpisodePlanEntry, EvaluationPlan
+from eval_ui import update_status, start_rollout, get_score_input, get_test_instruction
+from system_config import Args
 
 
 # DROID data collection frequency -- we slow down execution to match this frequency
@@ -21,7 +23,7 @@ DROID_CONTROL_FREQUENCY = 15
 
 
 class EvalControl:
-    def __init__(self, args: "Args", env: RobotEnv, policy_client: PolicyClient):
+    def __init__(self, args: Args, env: RobotEnv, policy_client: PolicyClient):
         self.args = args
         self.env = env
         self.policy_client = policy_client
@@ -52,9 +54,10 @@ class EvalControl:
         t_step = 0
         
         interrupted = False
+        start_time = time.time()
         try:
             for t_step in bar:
-                start_time = time.time()
+                interation_start_time = time.time()
 
                 curr_obs = self._extract_observation(
                     self.args,
@@ -64,7 +67,7 @@ class EvalControl:
                 scene_video.append(curr_obs["scene_image"])
                 wrist_video.append(curr_obs["wrist_image"])
 
-                if actions_from_chunk_completed == 0 or actions_from_chunk_completed >= self.args.open_loop_horizon:
+                if actions_from_chunk_completed == 0 or actions_from_chunk_completed >= self.policy_client.open_loop_horizon:
                     actions_from_chunk_completed = 0
 
                     pred_action_chunk = self.policy_client.infer(curr_obs, instruction)
@@ -79,7 +82,7 @@ class EvalControl:
 
                 self.env.step(action)
 
-                elapsed_time = time.time() - start_time
+                elapsed_time = time.time() - interation_start_time
                 if elapsed_time < 1 / DROID_CONTROL_FREQUENCY:
                     time.sleep(1 / DROID_CONTROL_FREQUENCY - elapsed_time)
 
@@ -96,9 +99,9 @@ class EvalControl:
 
             video_paths = []
             if save_scene_video:
-                video_paths.append(save_rollout_video(eval_results_dir, f"scene_camera_rollout_{run_number}", scene_video))
+                video_paths.append(save_rollout_video(eval_results_dir, f"scene_camera_rollout_{run_number}", scene_video, self.args.recording_fps))
             if save_wrist_video:
-                video_paths.append(save_rollout_video(eval_results_dir, f"wrist_camera_rollout_{run_number}", wrist_video))
+                video_paths.append(save_rollout_video(eval_results_dir, f"wrist_camera_rollout_{run_number}", wrist_video, self.args.recording_fps))
 
             rollout_results = {
                 "run_number": run_number,
@@ -120,29 +123,20 @@ class EvalControl:
     def run_eval_loop(self, episode: EpisodePlanEntry, filename: str = "eval.yaml", is_evaluation: bool = False) -> str:
         """Run one episode to completion: the initial not-yet-run pass, then
         an interactive retake loop until the user enters no rollout numbers.
-
-        is_evaluation controls whether the retake-loop interrupt menu offers
-        "advance" (skip remaining retakes, move to the next episode in an
-        evaluation) -- not meaningful for a standalone episode, since there's
-        nothing to advance to.
-
-        Returns "advance" if the user chose to advance past this episode's
-        retakes (only possible when is_evaluation=True), or "done" once the
-        retake loop ends normally (user entered no numbers).
         """
         config_params = episode.episode_config
         eval_results_dir = episode.episode_dir
 
         expected_files = []
-        if config_params.get("record_scene_video", False):
+        if self.args.record_scene_camera:
             expected_files.append("scene_camera")
-        if config_params.get("record_wrist_video", False):
+        if self.args.record_wrist_camera:
             expected_files.append("wrist_camera")
 
         eval_params = {
             "task_name": config_params["task_name"],
-            "policy_name": self.args.policy,
-            "policy_checkpoint": self.policy_client.get_policy_checkpoint(),
+            "policy_name": self.policy_client.name,
+            "policy_checkpoint": self.policy_client.policy_checkpoint,
             "instructions": config_params["instructions"],
             "num_rollouts": config_params["num_rollouts"],
             "max_step_score": config_params.get("max_step_score", 0),
@@ -185,9 +179,6 @@ class EvalControl:
                     )
                     remaining_batch = []
                 except KeyboardInterrupt as e:
-                    # run_rollout itself fully saves/scores the rollout it
-                    # was interrupted on before re-raising, so that rollout
-                    # counts as done too -- not just the ones before it.
                     completed_count = getattr(e, "completed_count", 0)
                     remaining_batch = remaining_batch[completed_count + 1:]
 
@@ -196,8 +187,6 @@ class EvalControl:
                         return "advance"
                     if choice == "quit":
                         raise
-                    # choice == "resume": loop continues with remaining_batch
-                    # trimmed down to whatever this attempt hadn't reached yet.
                     self.env.reset()
 
             print("Enter rollout numbers to retake (whitespace-separated), or press Enter to finish:")
@@ -223,14 +212,7 @@ class EvalControl:
         self, rollout_numbers, instructions, max_timesteps, eval_results_dir,
         max_step_score, max_recall_score, filename, config_params,
     ) -> int:
-        """Run a batch of rollout numbers (initial pass or a retake batch).
-
-        Returns the count of rollout_numbers fully completed before a
-        KeyboardInterrupt, if one occurs (not counting the one that was
-        interrupted -- run_rollout itself saves/scores that one before
-        re-raising, so the caller treats it as accounted for separately).
-        On a clean run with no interrupt, the return value is unused.
-        """
+        """Run a batch of rollout numbers and return the number of completed rollouts. Raises KeyboardInterrupt if interrupted."""
         completed = 0
         for rollout_num in rollout_numbers:
             instruction = instructions[rollout_num % len(instructions)]
