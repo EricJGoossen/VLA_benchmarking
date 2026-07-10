@@ -2,6 +2,7 @@ import tqdm
 import datetime
 import time
 import numpy as np
+from third_party.MolmoAct2.examples.yam.launch_yaml_eval_molmoact import Args
 from third_party.droid.robot_env import RobotEnv
 
 from policy_clients import PolicyClient
@@ -21,7 +22,7 @@ DROID_CONTROL_FREQUENCY = 15
 
 
 class EvalControl:
-    def __init__(self, args: "Args", env: RobotEnv, policy_client: PolicyClient):
+    def __init__(self, args: Args, env: RobotEnv, policy_client: PolicyClient):
         self.args = args
         self.env = env
         self.policy_client = policy_client
@@ -52,9 +53,10 @@ class EvalControl:
         t_step = 0
         
         interrupted = False
+        start_time = time.time()
         try:
             for t_step in bar:
-                start_time = time.time()
+                interation_start_time = time.time()
 
                 curr_obs = self._extract_observation(
                     self.args,
@@ -79,7 +81,7 @@ class EvalControl:
 
                 self.env.step(action)
 
-                elapsed_time = time.time() - start_time
+                elapsed_time = time.time() - interation_start_time
                 if elapsed_time < 1 / DROID_CONTROL_FREQUENCY:
                     time.sleep(1 / DROID_CONTROL_FREQUENCY - elapsed_time)
 
@@ -96,9 +98,9 @@ class EvalControl:
 
             video_paths = []
             if save_scene_video:
-                video_paths.append(save_rollout_video(eval_results_dir, f"scene_camera_rollout_{run_number}", scene_video))
+                video_paths.append(save_rollout_video(eval_results_dir, f"scene_camera_rollout_{run_number}", scene_video, self.args.recording_fps))
             if save_wrist_video:
-                video_paths.append(save_rollout_video(eval_results_dir, f"wrist_camera_rollout_{run_number}", wrist_video))
+                video_paths.append(save_rollout_video(eval_results_dir, f"wrist_camera_rollout_{run_number}", wrist_video, self.args.recording_fps))
 
             rollout_results = {
                 "run_number": run_number,
@@ -134,9 +136,9 @@ class EvalControl:
         eval_results_dir = episode.episode_dir
 
         expected_files = []
-        if config_params.get("record_scene_video", False):
+        if self.args.record_scene_camera:
             expected_files.append("scene_camera")
-        if config_params.get("record_wrist_video", False):
+        if self.args.record_wrist_camera:
             expected_files.append("wrist_camera")
 
         eval_params = {

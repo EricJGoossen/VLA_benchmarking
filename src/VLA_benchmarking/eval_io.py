@@ -21,8 +21,6 @@ EPISODE_CONFIG_KEYS = [
     "num_rollouts",
     "max_step_score",
     "max_recall_score",
-    "record_scene_video",
-    "record_wrist_video",
 ]
 
 EVALUATION_CONFIG_KEYS = [

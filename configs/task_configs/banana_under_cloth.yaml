@@ -10,6 +10,3 @@ max_timesteps: 1200
 num_rollouts: 10
 max_step_score: 10
 max_recall_score: 10
-record_scene_video: true
-record_wrist_video: false
-
