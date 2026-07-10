@@ -15,6 +15,7 @@ from eval_io import (
 )
 from eval_planning import EpisodePlanEntry, EvaluationPlan
 from eval_ui import update_status, start_rollout, get_score_input, get_test_instruction
+from system_config import Args
 
 
 # DROID data collection frequency -- we slow down execution to match this frequency
@@ -122,15 +123,6 @@ class EvalControl:
     def run_eval_loop(self, episode: EpisodePlanEntry, filename: str = "eval.yaml", is_evaluation: bool = False) -> str:
         """Run one episode to completion: the initial not-yet-run pass, then
         an interactive retake loop until the user enters no rollout numbers.
-
-        is_evaluation controls whether the retake-loop interrupt menu offers
-        "advance" (skip remaining retakes, move to the next episode in an
-        evaluation) -- not meaningful for a standalone episode, since there's
-        nothing to advance to.
-
-        Returns "advance" if the user chose to advance past this episode's
-        retakes (only possible when is_evaluation=True), or "done" once the
-        retake loop ends normally (user entered no numbers).
         """
         config_params = episode.episode_config
         eval_results_dir = episode.episode_dir
@@ -187,9 +179,6 @@ class EvalControl:
                     )
                     remaining_batch = []
                 except KeyboardInterrupt as e:
-                    # run_rollout itself fully saves/scores the rollout it
-                    # was interrupted on before re-raising, so that rollout
-                    # counts as done too -- not just the ones before it.
                     completed_count = getattr(e, "completed_count", 0)
                     remaining_batch = remaining_batch[completed_count + 1:]
 
@@ -198,8 +187,6 @@ class EvalControl:
                         return "advance"
                     if choice == "quit":
                         raise
-                    # choice == "resume": loop continues with remaining_batch
-                    # trimmed down to whatever this attempt hadn't reached yet.
                     self.env.reset()
 
             print("Enter rollout numbers to retake (whitespace-separated), or press Enter to finish:")
@@ -225,14 +212,7 @@ class EvalControl:
         self, rollout_numbers, instructions, max_timesteps, eval_results_dir,
         max_step_score, max_recall_score, filename, config_params,
     ) -> int:
-        """Run a batch of rollout numbers (initial pass or a retake batch).
-
-        Returns the count of rollout_numbers fully completed before a
-        KeyboardInterrupt, if one occurs (not counting the one that was
-        interrupted -- run_rollout itself saves/scores that one before
-        re-raising, so the caller treats it as accounted for separately).
-        On a clean run with no interrupt, the return value is unused.
-        """
+        """Run a batch of rollout numbers and return the number of completed rollouts. Raises KeyboardInterrupt if interrupted."""
         completed = 0
         for rollout_num in rollout_numbers:
             instruction = instructions[rollout_num % len(instructions)]
