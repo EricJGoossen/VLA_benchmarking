@@ -5,7 +5,7 @@ import numpy as np
 from third_party.MolmoAct2.examples.yam.launch_yaml_eval_molmoact import Args
 from third_party.droid.robot_env import RobotEnv
 
-from policy_clients import PolicyClient
+from VLA_benchmarking.policy_clients.abstract_policy_client import AbstractPolicyClient
 from eval_io import (
     save_rollout_video,
     write_eval_results,
@@ -23,7 +23,7 @@ DROID_CONTROL_FREQUENCY = 15
 
 
 class EvalControl:
-    def __init__(self, args: Args, env: RobotEnv, policy_client: PolicyClient):
+    def __init__(self, args: Args, env: RobotEnv, policy_client: AbstractPolicyClient):
         self.args = args
         self.env = env
         self.policy_client = policy_client

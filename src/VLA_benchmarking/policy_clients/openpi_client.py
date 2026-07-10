@@ -1,0 +1,64 @@
+from abc import ABC, abstractmethod
+from dataclasses import asdict, dataclass, field, fields, is_dataclass
+from enum import Enum
+from typing import Any, ClassVar
+from collections import deque
+import contextlib
+import functools
+import signal
+import numpy as np
+import msgpack
+import msgpack_numpy as mnp
+import requests
+import zmq
+from third_party.openpi import image_tools
+from third_party.openpi import websocket_client_policy
+import json_numpy
+
+json_numpy.patch()
+
+
+from eval_io import load_policy_config
+
+
+@dataclass
+class OpenPiClient(PolicyClient, policy_name=["pi0", "pi05"]):
+    """Client for pi0 / pi0.5 policies served via the openpi WebSocket server."""
+
+    # Internal connection object — not a constructor arg, not shown in repr.
+    _client: websocket_client_policy.WebsocketClientPolicy | None = field(
+        default=None, init=False, repr=False
+    )
+
+    def connect(self):
+        if self._client is None:
+            self._client = websocket_client_policy.WebsocketClientPolicy(self.host, self.port)
+
+    def disconnect(self):
+        self._client = None
+
+    def infer(self, observation: dict, instruction: str) -> np.ndarray:
+        if self._client is None:
+            raise RuntimeError("Client is not connected. Call connect() first.")
+
+        request_data = {
+            "observation/exterior_image_1_left": image_tools.resize_with_pad(
+                observation["scene_image"], 224, 224
+            ),
+            "observation/wrist_image_left": image_tools.resize_with_pad(
+                observation["wrist_image"], 224, 224
+            ),
+            "observation/joint_position": observation["joint_position"],
+            "observation/gripper_position": observation["gripper_position"],
+            "prompt": instruction,
+        }
+
+        with self.prevent_keyboard_interrupt():
+            try:
+                actions = self._client.infer(request_data)["actions"]
+                return np.clip(actions, -1, 1)
+            except Exception:
+                print("Disconnected — attempting to reconnect.")
+                self.connect()
+                actions = self._client.infer(request_data)["actions"]
+                return np.clip(actions, -1, 1)
