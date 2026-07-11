@@ -7,13 +7,23 @@ from VLA_benchmarking.eval_control import EvalControl
 from VLA_benchmarking.eval_io import load_config
 from VLA_benchmarking.eval_planning import build_plan
 import tyro
-from droid.robot_env import RobotEnv
+
+try:
+    from droid.robot_env import RobotEnv
+except ImportError as e:
+    raise ImportError(
+        "Could not import 'droid'. Running evaluations against a real robot requires "
+        "the DROID robot platform (https://github.com/droid-dataset/droid) to already be "
+        "set up and installed into this Python environment -- it is not a dependency of "
+        "VLA_benchmarking itself. See the 'Real-robot evaluation' section of the README "
+        "for setup instructions."
+    ) from e
 
 
 faulthandler.enable()
 
 
-def _resolve_results_dir(policy_name: str, config: dict) -> str:
+def _resolve_results_dir(args: Args, policy_name: str, config: dict) -> str:
     """Return the results directory to use: args.results_dir if given,
     otherwise a timestamped fallback under args.default_results_dir.
     """
@@ -80,7 +90,7 @@ def main(args: Args):
         return
 
     config = load_config(args.config_file)
-    results_dir = _resolve_results_dir(policy_client.policy_name, config)
+    results_dir = _resolve_results_dir(args, policy_client.policy_name, config)
 
     plan = build_plan(args.config_file, policy_client.policy_name, results_dir)
 

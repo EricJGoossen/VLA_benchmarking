@@ -5,6 +5,8 @@ POLICY_CONFIG_KEYS = [
     "policy_name",
     "policy_checkpoint",
     "open_loop_horizon",
+    "default_remote_host",
+    "default_remote_port",
     "action_space",
     "gripper_space",
 ]
@@ -57,8 +59,8 @@ SCORE_RESULT_KEYS = [
 @dataclasses.dataclass
 class Args:
     # Camera parameters
-    scene_camera_id: str = "39668372"
-    wrist_camera_id: str = "16744838"
+    scene_camera_id: str = "12345678" # UPDATE
+    wrist_camera_id: str = "12345678" # UPDATE
     recording_fps: int = 10
     record_scene_camera: bool = True
     record_wrist_camera: bool = True

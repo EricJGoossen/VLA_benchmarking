@@ -66,7 +66,7 @@ class EvalControl:
         start_time = time.time()
         try:
             for t_step in bar:
-                interation_start_time = time.time()
+                iteration_state_time = time.time()
 
                 curr_obs = self._extract_observation(
                     self.args,
@@ -91,7 +91,7 @@ class EvalControl:
 
                 self.env.step(action)
 
-                elapsed_time = time.time() - interation_start_time
+                elapsed_time = time.time() - iteration_state_time
                 if elapsed_time < 1 / DROID_CONTROL_FREQUENCY:
                     time.sleep(1 / DROID_CONTROL_FREQUENCY - elapsed_time)
 

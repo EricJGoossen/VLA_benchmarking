@@ -73,7 +73,85 @@ Each policy server is typically set up in its **own environment**, separate from
 
 ## Usage
 
-*Usage instructions for running evaluations via `run_eval.py`, including policy config and task config files — coming soon.*
+Running an evaluation involves three separate processes, typically on at least two machines: the DROID **NUC** (robot controller), and your **DROID workstation/laptop** (where this repo and the VLA policy servers run).
+
+### 1. Start the robot server (on the NUC)
+
+Run this from wherever you cloned the `droid` repository on the NUC. Leave this running for the duration of your session.
+
+```bash
+conda activate polymetis-local
+python3 scripts/server/run_server.py
+```
+
+### 2. Start a policy server (on your workstation)
+
+Each VLA policy is served independently, in its own environment, separate from the `robot` conda env. Pick the policy you want to evaluate:
+
+**pi0 / pi0.5** — from inside your `openpi` clone:
+
+```bash
+# pi0.5
+uv run scripts/serve_policy.py policy:checkpoint --policy.config=pi05_droid --policy.dir=gs://openpi-assets/checkpoints/pi05_droid
+
+# pi0
+uv run scripts/serve_policy.py policy:checkpoint --policy.config=pi0_droid --policy.dir=gs://openpi-assets/checkpoints/pi0_droid
+```
+
+**MolmoAct** — from inside your `MolmoAct2` clone:
+
+```bash
+uv run python examples/droid/host_server_droid.py --dtype bfloat16
+```
+
+**GR00T** — from inside your `Isaac-GR00T` clone:
+
+```bash
+uv run python gr00t/eval/run_gr00t_server.py \
+  --model-path nvidia/GR00T-N1.7-DROID \
+  --embodiment-tag OXE_DROID_RELATIVE_EEF_RELATIVE_JOINT \
+  --device cuda:0
+```
+
+Each command above accepts extra args to configure host/port (check each server's `--help` for the exact flags). The default host and port for each server has been configured in its respective config file, but if you change from the default, you must match the host and port as CLI arguements in step 3.
+
+### 3. Run an evaluation (this repo)
+
+Activate the `robot` conda env (where this repo was `pip install`ed per the Setup section), then run:
+
+```bash
+conda activate robot
+python scripts/run_eval.py --policy-config configs/policy_configs/PI05.yaml --config-file configs/eval_configs/full_benchmark_eval.yaml
+```
+
+**Required argument:**
+
+| Flag | Description |
+|---|---|
+| `--policy-config` | Path to the policy YAML for the server you started in step 2 (e.g. `configs/policy_configs/PI05.yaml`, `PI0.yaml`, `MolmoAct2.yaml`, `Gr00t.yaml`). |
+
+**Optional arguments:**
+
+| Flag | Description |
+|---|---|
+| `--config-file` | Path to a task config (`configs/task_configs/*.yaml`, runs one episode) or an evaluation config (`configs/eval_configs/*.yaml`, runs a full sequence of episodes). If omitted, runs an interactive test loop instead — no data or scores are saved, useful for sanity-checking a policy server connection before a real run. |
+| `--server-host` / `--server-port` | Override the `default_remote_host` / `default_remote_port` from the policy config, if your policy server is running on a different host/port than the config specifies. |
+| `--results-dir` | Directory to write results into. If omitted, defaults to a timestamped folder under `--default-results-dir` (default `./results`), named after the evaluation or `{policy}_{task}`. |
+| `--scene-camera-id` / `--wrist-camera-id` | Override the camera IDs set in `system_config.py` without editing the file. |
+| `--recording-fps` | Frame rate for saved rollout videos (default 10). |
+| `--record-scene-camera` / `--record-wrist-camera` | Toggle whether each camera's video is saved (default: both `True`). |
+
+Once running, the tool will prompt you before each rollout, then ask for a success flag, step score, recall score, and optional comments after each one. If interrupted mid-episode (Ctrl+C), you'll be asked whether to resume, advance to the next episode (evaluation configs only), run a test rollout, or quit. A partially-completed run cane be resumed later later since `run_eval.py` checks on-disk results and skips completed rollouts.
+
+### 4. Aggregate results
+
+Once evaluation(s) are complete for one or more policies under a shared results directory:
+
+```bash
+python scripts/compute_results.py <results_dir> <output_dir>
+```
+
+This produces, per policy, `raw.csv` (one row per rollout), `by_task.csv`, and `by_prompt.csv` (success rate and normalized scores averaged by task/instruction) under `<output_dir>/{policy}_results/`.
 
 ## Repository Structure
 
@@ -83,6 +161,7 @@ Each policy server is typically set up in its **own environment**, separate from
 | `eval_control.py` | Drives the rollout loop against the robot: stepping the policy, recording video/state, and saving per-rollout results. |
 | `eval_planning.py` | Parses evaluation/task config files and result directory state into an executable plan of episodes. |
 | `eval_io.py` | Shared I/O utilities: loading policy/task configs, saving videos, writing result files. |
+| `eval_ui.py` | User-facing prompts and status messages: score input, rollout start/stop confirmations, test-loop instruction entry. |
 | `policy_clients.py` | `PolicyClient` implementations for each supported VLA policy (pi0, pi05, MolmoAct, GR00T), communicating with remote policy servers. |
 | `system_config.py` | CLI argument / config dataclass definitions (`Args`). |
 | `compute_results.py` | Aggregates saved rollout results into summary scores. |

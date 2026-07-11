@@ -21,7 +21,7 @@ dependencies = [
     "moviepy",
     "scipy",
     "pillow",
-    "openpi-client @ git+https://github.com/Physical-Intelligence/openpi.git@15a9616a00943ada6c20a0f158e3adb39df2ccac#subdirectory=packages/openpi-client",
+    "openpi-client @ git+https://github.com/xuningy/openpi.git@aa6420561529593114160d05e5ad155792b272f3#subdirectory=packages/openpi-client",
 ]
 
 [tool.hatch.metadata]
