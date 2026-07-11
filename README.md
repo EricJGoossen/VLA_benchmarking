@@ -55,7 +55,7 @@ pip install .
 
 ### 4. Determine camera ID
 
-Open zed explorer, which you should have setup during step 1. The camera ID should be next to its name in the viewer. Edit the respective camera ID fields inside [system_config.py](src/VLA_benchmarking/system_config.py) to match the values you just found. While there, you can also configure the default CLI arguements for any other field.
+Open zed explorer, which you should have setup during step 1. The camera ID should be next to its name in the viewer. Edit the respective camera ID fields inside [system_config.py](src/VLA_benchmarking/system_config.py) to match the values you just found. While there, you can also configure the default CLI arguments for any other field.
 
 ### 5. Set up policy servers
 
@@ -113,7 +113,7 @@ uv run python gr00t/eval/run_gr00t_server.py \
   --device cuda:0
 ```
 
-Each command above accepts extra args to configure host/port (check each server's `--help` for the exact flags). The default host and port for each server has been configured in its respective config file, but if you change from the default, you must match the host and port as CLI arguements in step 3.
+Each command above accepts extra args to configure host/port (check each server's `--help` for the exact flags). The default host and port for each server has been configured in its respective config file, but if you change from the default, you must match the host and port as CLI arguments in step 3.
 
 ### 3. Run an evaluation (this repo)
 
@@ -141,7 +141,7 @@ python scripts/run_eval.py --policy-config configs/policy_configs/PI05.yaml --co
 | `--recording-fps` | Frame rate for saved rollout videos (default 10). |
 | `--record-scene-camera` / `--record-wrist-camera` | Toggle whether each camera's video is saved (default: both `True`). |
 
-Once running, the tool will prompt you before each rollout, then ask for a success flag, step score, recall score, and optional comments after each one. If interrupted mid-episode (Ctrl+C), you'll be asked whether to resume, advance to the next episode (evaluation configs only), run a test rollout, or quit. A partially-completed run cane be resumed later later since `run_eval.py` checks on-disk results and skips completed rollouts.
+Once running, the tool will prompt you before each rollout, then ask for a success flag, step score, recall score, and optional comments after each one. If interrupted mid-episode (Ctrl+C), you'll be asked whether to resume, advance to the next episode (evaluation configs only), run a test rollout, or quit. A partially-completed run can be resumed later since `run_eval.py` checks on-disk results and skips completed rollouts.
 
 ### 4. Aggregate results
 
