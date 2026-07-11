@@ -157,14 +157,17 @@ This produces, per policy, `raw.csv` (one row per rollout), `by_task.csv`, and `
 
 | File | Purpose |
 |---|---|
-| `run_eval.py` | Main entrypoint; builds the policy client and DROID environment, then runs an evaluation plan (or a test loop). |
-| `eval_control.py` | Drives the rollout loop against the robot: stepping the policy, recording video/state, and saving per-rollout results. |
-| `eval_planning.py` | Parses evaluation/task config files and result directory state into an executable plan of episodes. |
-| `eval_io.py` | Shared I/O utilities: loading policy/task configs, saving videos, writing result files. |
-| `eval_ui.py` | User-facing prompts and status messages: score input, rollout start/stop confirmations, test-loop instruction entry. |
-| `policy_clients.py` | `PolicyClient` implementations for each supported VLA policy (pi0, pi05, MolmoAct, GR00T), communicating with remote policy servers. |
-| `system_config.py` | CLI argument / config dataclass definitions (`Args`). |
-| `compute_results.py` | Aggregates saved rollout results into summary scores. |
+| `scripts/run_eval.py` | Main entrypoint; builds the policy client and DROID environment, then runs an evaluation plan (or a test loop). |
+| `src/VLA_benchmarking/eval_control.py` | Drives the rollout loop against the robot: stepping the policy, recording video/state, and saving per-rollout results. |
+| `src/VLA_benchmarking/eval_planning.py` | Parses evaluation/task config files and result directory state into an executable plan of episodes. |
+| `src/VLA_benchmarking/eval_io.py` | Shared I/O utilities: loading policy/task configs, saving videos, writing result files. |
+| `src/VLA_benchmarking/eval_ui.py` | User-facing prompts and status messages: score input, rollout start/stop confirmations, test-loop instruction entry. |
+| `src/VLA_benchmarking/system_config.py` | CLI argument / config dataclass definitions (`Args`) and config schema key lists. |
+| `src/VLA_benchmarking/policy_clients/abstract_policy_client.py` | Base class for all policy clients; policy registry and `from_config` construction logic. |
+| `src/VLA_benchmarking/policy_clients/openpi_client.py` | Client for pi0 / pi0.5, served via the openpi WebSocket server. |
+| `src/VLA_benchmarking/policy_clients/molmoact_client.py` | Client for MolmoAct, served via an HTTP REST server. |
+| `src/VLA_benchmarking/policy_clients/groot_client.py` | Client for GR00T, served via a ZMQ server. |
+| `scripts/compute_results.py` | Aggregates saved rollout results into summary scores. |
 | `configs/` | Per-policy YAML configs and per-task/evaluation YAML configs. |
 
 ## License

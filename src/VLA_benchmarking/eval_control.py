@@ -123,11 +123,17 @@ class EvalControl:
 
             write_rollout_results(eval_results_dir, filename, run_number, rollout_results)
 
-            score_results = get_score_input(max_step_score=max_step_score, max_recall_score=max_recall_score)
-            write_score_results(eval_results_dir, filename, run_number, score_results)
+            try:
+                score_results = get_score_input(max_step_score=max_step_score, max_recall_score=max_recall_score)
+                write_score_results(eval_results_dir, filename, run_number, score_results)
+            except KeyboardInterrupt as e:
+                setattr(e, "rollout_scored", False)
+                raise
 
             if interrupted:
-                raise KeyboardInterrupt
+                exc = KeyboardInterrupt()
+                setattr(exc, "rollout_scored", True)
+                raise exc
 
     def run_eval_loop(self, episode: EpisodePlanEntry, filename: str = "eval.yaml", is_evaluation: bool = False) -> str:
         """Run one episode to completion: the initial not-yet-run pass, then
@@ -189,7 +195,24 @@ class EvalControl:
                     remaining_batch = []
                 except KeyboardInterrupt as e:
                     completed_count = getattr(e, "completed_count", 0)
+                    rollout_scored = getattr(e, "rollout_scored", True)
+
+                    unscored_rollout_num = None
+                    if not rollout_scored and completed_count < len(remaining_batch):
+                        unscored_rollout_num = remaining_batch[completed_count]
+
                     remaining_batch = remaining_batch[completed_count + 1:]
+
+                    if unscored_rollout_num is not None:
+                        print(f"Rollout {unscored_rollout_num} is missing score data. Enter scores...")
+                        try:
+                            score_results = get_score_input(max_step_score=max_step_score, max_recall_score=max_recall_score)
+                            write_score_results(eval_results_dir, filename, unscored_rollout_num, score_results)
+                        except KeyboardInterrupt:
+                            print(
+                                f"Score entry interrupted again -- rollout {unscored_rollout_num} still needs "
+                                "scores. Re-running run_eval.py later will prompt for it automatically."
+                            )
 
                     choice = self._handle_episode_interrupt(is_evaluation)
                     if choice == "advance":
@@ -242,6 +265,7 @@ class EvalControl:
                 )
             except KeyboardInterrupt as e:
                 setattr(e, "completed_count", completed)
+                setattr(e, "rollout_scored", getattr(e, "rollout_scored", True))
                 raise
 
             completed += 1

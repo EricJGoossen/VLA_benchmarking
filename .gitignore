@@ -5,3 +5,6 @@ dist/
 build/
 .env
 results/
+.venv/
+*.pyc
+.DS_Store
