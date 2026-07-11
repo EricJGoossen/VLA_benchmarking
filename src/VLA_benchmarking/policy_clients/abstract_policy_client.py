@@ -58,12 +58,6 @@ class AbstractPolicyClient(ABC):
 
         return target_cls(**kwargs)
 
-    def set_host(self, host: str) -> None:
-        self.host = host
-
-    def set_port(self, port: int) -> None:
-        self.port = port
-
     @abstractmethod
     def connect(self):
         pass

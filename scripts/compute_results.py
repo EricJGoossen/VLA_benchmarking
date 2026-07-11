@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-aggregate_results.py
+compute_results.py
 
 Walks an input benchmark directory structured like:
 
@@ -20,7 +20,7 @@ For every policy found, writes:
     {output_dir}/{policy}_results/by_task.csv     rollouts averaged by task_name
 
 Usage:
-    python aggregate_results.py <input_dir> <output_dir>
+    python compute_results.py <input_dir> <output_dir>
 """
 
 import argparse

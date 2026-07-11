@@ -107,9 +107,9 @@ class EvalControl:
             update_status("Rollout complete, saving results...")
 
             video_paths = []
-            if save_scene_video:
+            if save_scene_video and scene_video:
                 video_paths.append(save_rollout_video(eval_results_dir, f"scene_camera_rollout_{run_number}", scene_video, self.args.recording_fps))
-            if save_wrist_video:
+            if save_wrist_video and wrist_video:
                 video_paths.append(save_rollout_video(eval_results_dir, f"wrist_camera_rollout_{run_number}", wrist_video, self.args.recording_fps))
 
             rollout_results = {
