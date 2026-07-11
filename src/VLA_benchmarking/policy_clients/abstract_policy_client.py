@@ -4,11 +4,8 @@ from typing import ClassVar
 import contextlib
 import signal
 import numpy as np
-import json_numpy
 
-json_numpy.patch()
-
-from eval_io import load_policy_config
+from ..eval_io import load_policy_config
 
 
 @dataclass
@@ -97,3 +94,4 @@ class AbstractPolicyClient(ABC):
             signal.signal(signal.SIGINT, original_handler)
             if interrupted:
                 raise KeyboardInterrupt
+            

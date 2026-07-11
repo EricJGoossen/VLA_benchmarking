@@ -2,7 +2,7 @@ import os
 from enum import Enum
 import numpy as np
 import yaml
-from moviepy.editor import ImageSequenceClip
+from moviepy import ImageSequenceClip
 from VLA_benchmarking.system_config import (
     POLICY_CONFIG_KEYS,
     EPISODE_CONFIG_KEYS,

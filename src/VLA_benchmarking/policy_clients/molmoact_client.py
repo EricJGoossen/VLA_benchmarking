@@ -1,25 +1,12 @@
-from abc import ABC, abstractmethod
-from dataclasses import asdict, dataclass, field, fields, is_dataclass
-from enum import Enum
-from typing import Any, ClassVar
-from collections import deque
-import contextlib
-import functools
-import signal
+from dataclasses import dataclass
 import numpy as np
-import msgpack
-import msgpack_numpy as mnp
 import requests
-import zmq
 import json_numpy
+from .abstract_policy_client import AbstractPolicyClient
 
-json_numpy.patch()
-
-
-from eval_io import load_policy_config
 
 @dataclass
-class MolmoActClient(PolicyClient, policy_name="molmoact"):
+class MolmoActClient(AbstractPolicyClient, policy_name="molmoact"):
     """Client for MolmoAct policies served via an HTTP REST server."""
 
     @property
@@ -60,3 +47,4 @@ class MolmoActClient(PolicyClient, policy_name="molmoact"):
             result = json_numpy.loads(response.text)
 
         return result["actions"]
+    

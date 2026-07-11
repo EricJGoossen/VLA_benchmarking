@@ -1,7 +1,7 @@
 import datetime
 import faulthandler
 import os
-from VLA_benchmarking.policy_clients import PolicyClient
+from VLA_benchmarking.policy_clients.abstract_policy_client import AbstractPolicyClient
 from VLA_benchmarking.system_config import Args
 from VLA_benchmarking.eval_control import EvalControl
 from VLA_benchmarking.eval_io import load_config
@@ -60,7 +60,7 @@ def _check_cameras_exist(env: RobotEnv, args: Args) -> None:
 
 
 def main(args: Args):
-    policy_client = PolicyClient.from_config(args.policy_config)
+    policy_client = AbstractPolicyClient.from_config(args.policy_config)
 
     policy_client.host = args.server_host or policy_client.host
     policy_client.port = args.server_port or policy_client.port
@@ -80,9 +80,9 @@ def main(args: Args):
         return
 
     config = load_config(args.config_file)
-    results_dir = _resolve_results_dir(policy_client.name, config)
+    results_dir = _resolve_results_dir(policy_client.policy_name, config)
 
-    plan = build_plan(args.config_file, policy_client.name, results_dir)
+    plan = build_plan(args.config_file, policy_client.policy_name, results_dir)
 
     try:
         _run_plan(controller, plan)

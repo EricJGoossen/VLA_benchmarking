@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "VLA_benchmarking"
+version = "0.1.0"
+description = "Benchmarking harness for evaluating VLA (vision-language-action) policies."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "pyyaml",
+    "tqdm",
+    "tyro",
+    "requests",
+    "pyzmq",
+    "msgpack",
+    "msgpack-numpy",
+    "json-numpy",
+    "moviepy",
+    "scipy",
+    "pillow",
+    "openpi-client @ git+https://github.com/Physical-Intelligence/openpi.git@15a9616a00943ada6c20a0f158e3adb39df2ccac#subdirectory=packages/openpi-client",
+]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/VLA_benchmarking"]

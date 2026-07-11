@@ -7,11 +7,10 @@ import numpy as np
 import msgpack
 import msgpack_numpy as mnp
 import zmq
+from PIL import Image
+from scipy.spatial.transform import Rotation
 
-from third_party.openpi import image_tools
-import json_numpy
-
-json_numpy.patch()
+from .abstract_policy_client import AbstractPolicyClient
 
 
 @dataclass
@@ -19,14 +18,14 @@ class _GrootConnection:
     """Internal connection state for GrootClient — not user-facing config."""
 
     context: zmq.Context = field(default_factory=zmq.Context)
-    socket: "zmq.Socket | None" = None
+    socket: zmq.Socket | None = None
     modality_keys: dict | None = None
     video_delta: list | None = None
     frame_buffer: deque | None = None
 
 
 @dataclass
-class GrootClient(PolicyClient, policy_name="gr00t"):
+class GrootClient(AbstractPolicyClient, policy_name="gr00t"):
     """Client for GR00T policies served via a ZMQ server."""
 
     _EEF_ROTATION_CORRECT: ClassVar[np.ndarray] = np.array(
@@ -40,6 +39,9 @@ class GrootClient(PolicyClient, policy_name="gr00t"):
 
     def connect(self):
         self._conn.socket = self._conn.context.socket(zmq.REQ)
+        if self._conn.socket is None:
+            raise RuntimeError("Failed to create ZMQ socket.")
+
         self._conn.socket.setsockopt(zmq.RCVTIMEO, self.timeout_ms)
         self._conn.socket.setsockopt(zmq.SNDTIMEO, self.timeout_ms)
         self._conn.socket.connect(f"tcp://{self.host}:{self.port}")
@@ -68,8 +70,8 @@ class GrootClient(PolicyClient, policy_name="gr00t"):
             raise RuntimeError("Client is not connected. Call connect() first.")
 
         H, W = self._IMAGE_RESOLUTION
-        ext_image = image_tools.resize_with_pad(observation["scene_image"], H, W)
-        wrist_image = image_tools.resize_with_pad(observation["wrist_image"], H, W)
+        ext_image = self._resize_with_pad(observation["scene_image"], H, W)
+        wrist_image = self._resize_with_pad(observation["wrist_image"], H, W)
         self._conn.frame_buffer.append({"ext": ext_image, "wrist": wrist_image})
 
         obs = self._format_observation(observation, instruction)
@@ -125,7 +127,6 @@ class GrootClient(PolicyClient, policy_name="gr00t"):
     @staticmethod
     def _compute_eef_9d(cartesian_position: np.ndarray) -> np.ndarray:
         """Convert XYZ + extrinsic XYZ Euler to XYZ + rot6d, corrected for OXE DROID convention."""
-        from scipy.spatial.transform import Rotation
         c = np.asarray(cartesian_position, dtype=np.float64).reshape(6)
         rot_mat = Rotation.from_euler("XYZ", c[3:6]).as_matrix() @ GrootClient._EEF_ROTATION_CORRECT
         rot6d = rot_mat[:2, :].reshape(6)
@@ -139,6 +140,37 @@ class GrootClient(PolicyClient, policy_name="gr00t"):
         if isinstance(response, dict) and "error" in response:
             raise RuntimeError(f"GR00T server error: {response['error']}")
         return response
+
+    def _resize_with_pad(self, images: np.ndarray, height: int, width: int, method=Image.Resampling.BILINEAR) -> np.ndarray:
+        """Replicates tf.image.resize_with_pad for a batch of images using PIL: resizes preserving
+        aspect ratio, then zero-pads to the target height/width.
+        """
+        if images.shape[-3:-1] == (height, width):
+            return images
+
+        original_shape = images.shape
+        images = images.reshape(-1, *original_shape[-3:])
+        resized = np.stack([
+            np.asarray(self._resize_with_pad_pil(Image.fromarray(im), height, width, method=method))
+            for im in images
+        ])
+        return resized.reshape(*original_shape[:-3], *resized.shape[-3:])
+
+    def _resize_with_pad_pil(self, image: Image.Image, height: int, width: int, method: int) -> Image.Image:
+        cur_width, cur_height = image.size
+        if cur_width == width and cur_height == height:
+            return image
+
+        ratio = max(cur_width / width, cur_height / height)
+        resized_height = int(cur_height / ratio)
+        resized_width = int(cur_width / ratio)
+        resized_image = image.resize((resized_width, resized_height), resample=method)
+
+        zero_image = Image.new(resized_image.mode, (width, height), 0)
+        pad_height = max(0, int((height - resized_height) / 2))
+        pad_width = max(0, int((width - resized_width) / 2))
+        zero_image.paste(resized_image, (pad_width, pad_height))
+        return zero_image
 
     class _MsgSerializer:
         """msgpack + numpy serialization for ZMQ transport."""
@@ -195,3 +227,4 @@ class GrootClient(PolicyClient, policy_name="gr00t"):
                     raise ValueError("Malformed dataclass payload: 'fields' missing.")
                 return obj[key]
             return obj
+        

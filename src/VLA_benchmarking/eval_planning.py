@@ -1,17 +1,7 @@
-"""Builds an execution plan for a single program invocation: either one
-episode, or one evaluation (an ordered list of episodes, possibly with
-duplicate episode config paths).
-
-The plan is computed once up front by scanning disk state for every episode
-slot the run will touch, so the rest of the program never has to re-derive
-"is this episode/rollout already done" mid-execution -- it just walks the
-plan and runs whatever isn't complete yet.
-"""
-
 import dataclasses
 import os
 
-from eval_io import (
+from .eval_io import (
     get_rollout_statuses,
     is_episode_complete,
     load_config,
@@ -28,7 +18,7 @@ class EpisodePlanEntry:
     episode_config_path: str
     episode_config: dict
     episode_dir: str
-    rollout_statuses: "list[RolloutStatus]"  # length num_rollouts; all NOT_FOUND if nothing written yet
+    rollout_statuses: list[RolloutStatus]  # length num_rollouts
     is_complete: bool
 
 
@@ -59,12 +49,7 @@ def _build_episode_plan_entry(episode_config_path: str, episode_config: dict, ep
 
 
 def build_plan(config_path: str, policy: str, results_dir: str) -> EvaluationPlan:
-    """Load config_path and build the full execution plan for this run.
-
-    results_dir is the already-resolved base directory results should be
-    written under (CLI-provided or the computed default fallback) -- this
-    function only adds the policy/task_name/episode_N structure on top.
-    """
+    """Load config_path and build the full execution plan for this run."""
     config = load_config(config_path)
 
     if config["config_type"] == "episode":
@@ -72,7 +57,7 @@ def build_plan(config_path: str, policy: str, results_dir: str) -> EvaluationPla
         entry = _build_episode_plan_entry(config_path, config, episode_dir)
         return EvaluationPlan(config_type="episode", evaluation_name=None, episodes=[entry])
 
-    # config_type == "evaluation" (load_config already validated this)
+    # config_type == "evaluation"
     evaluation_name = config["evaluation_name"]
     episode_paths = config["episode_paths"]
 

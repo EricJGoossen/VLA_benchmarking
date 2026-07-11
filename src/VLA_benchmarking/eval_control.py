@@ -2,20 +2,29 @@ import tqdm
 import datetime
 import time
 import numpy as np
-from third_party.MolmoAct2.examples.yam.launch_yaml_eval_molmoact import Args
-from third_party.droid.robot_env import RobotEnv
+
+try:
+    from droid.robot_env import RobotEnv
+except ImportError as e:
+    raise ImportError(
+        "Could not import 'droid'. Running evaluations against a real robot requires "
+        "the DROID robot platform (https://github.com/droid-dataset/droid) to already be "
+        "set up and installed into this Python environment -- it is not a dependency of "
+        "VLA_benchmarking itself. See the 'Real-robot evaluation' section of the README "
+        "for setup instructions."
+    ) from e
 
 from VLA_benchmarking.policy_clients.abstract_policy_client import AbstractPolicyClient
-from eval_io import (
+from .eval_io import (
     save_rollout_video,
     write_eval_results,
     write_rollout_results,
     write_score_results,
     RolloutStatus,
 )
-from eval_planning import EpisodePlanEntry, EvaluationPlan
-from eval_ui import update_status, start_rollout, get_score_input, get_test_instruction
-from system_config import Args
+from .eval_planning import EpisodePlanEntry, EvaluationPlan
+from .eval_ui import update_status, start_rollout, get_score_input, get_test_instruction
+from .system_config import Args
 
 
 # DROID data collection frequency -- we slow down execution to match this frequency
@@ -34,8 +43,8 @@ class EvalControl:
             run_number: int, 
             max_timesteps: int, 
             eval_results_dir: str = "", 
-            max_step_score: int = None,
-            max_recall_score: int = None,
+            max_step_score: int | None = None,
+            max_recall_score: int | None = None,
             filename: str = "eval.yaml",
             save_data: bool = True,
             save_scene_video: bool = True,
@@ -135,7 +144,7 @@ class EvalControl:
 
         eval_params = {
             "task_name": config_params["task_name"],
-            "policy_name": self.policy_client.name,
+            "policy_name": self.policy_client.policy_name,
             "policy_checkpoint": self.policy_client.policy_checkpoint,
             "instructions": config_params["instructions"],
             "num_rollouts": config_params["num_rollouts"],
@@ -228,11 +237,11 @@ class EvalControl:
                     max_recall_score=max_recall_score,
                     filename=filename,
                     save_data=True,
-                    save_scene_video=config_params.get("record_scene_video", True),
-                    save_wrist_video=config_params.get("record_wrist_video", True),
+                    save_scene_video=self.args.record_scene_camera,
+                    save_wrist_video=self.args.record_wrist_camera,
                 )
             except KeyboardInterrupt as e:
-                e.completed_count = completed
+                setattr(e, "completed_count", completed)
                 raise
 
             completed += 1

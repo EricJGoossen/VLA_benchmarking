@@ -1,28 +1,12 @@
-from abc import ABC, abstractmethod
-from dataclasses import asdict, dataclass, field, fields, is_dataclass
-from enum import Enum
-from typing import Any, ClassVar
-from collections import deque
-import contextlib
-import functools
-import signal
+from dataclasses import dataclass, field
 import numpy as np
-import msgpack
-import msgpack_numpy as mnp
-import requests
-import zmq
-from third_party.openpi import image_tools
-from third_party.openpi import websocket_client_policy
-import json_numpy
-
-json_numpy.patch()
-
-
-from eval_io import load_policy_config
+from openpi_client import image_tools
+from openpi_client import websocket_client_policy
+from .abstract_policy_client import AbstractPolicyClient
 
 
 @dataclass
-class OpenPiClient(PolicyClient, policy_name=["pi0", "pi05"]):
+class OpenPiClient(AbstractPolicyClient, policy_name=["pi0", "pi05"]):
     """Client for pi0 / pi0.5 policies served via the openpi WebSocket server."""
 
     # Internal connection object — not a constructor arg, not shown in repr.
