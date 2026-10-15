@@ -56,6 +56,11 @@ SCORE_RESULT_KEYS = [
     "comments",
 ]
 
+# Teleop demos are only written once the operator accepts them, so they carry no score fields
+DEMO_SCORE_KEYS = []
+DEMO_RESULTS_FILENAME = "demos.yaml"
+DEMO_EXPECTED_FILES = ["trajectory.h5", "recordings"]
+
 @dataclasses.dataclass
 class Args:
     # Camera parameters
@@ -76,4 +81,8 @@ class Args:
     # Server parameters
     server_host: str | None = None
     server_port: int | None = None
+
+    # Teleop demo collection
+    teleop: bool = False
+    num_demos: int | None = None # Overrides num_rollouts from the task config when teleop is set
  

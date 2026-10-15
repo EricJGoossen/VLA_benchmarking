@@ -153,12 +153,41 @@ python scripts/compute_results.py <results_dir> <output_dir>
 
 This produces, per policy, `raw.csv` (one row per rollout), `by_task.csv`, and `by_prompt.csv` (success rate and normalized scores averaged by task/instruction) under `<output_dir>/{policy}_results/`.
 
+## Collecting Teleop Demonstrations
+
+The same entrypoint can record teleoperated demonstrations (e.g. for fine-tuning) with DROID's Oculus Quest controller instead of running a policy. This needs the headset set up per DROID's [Oculus setup instructions](https://droid-dataset.github.io/droid/software-setup/host-installation.html) and visible to `adb devices`; no policy server is needed. Start the robot server on the NUC as usual, then:
+
+```bash
+python scripts/run_eval.py --teleop --config-file configs/task_configs/banana_into_bowl.yaml --num-demos 5
+```
+
+| Flag | Description |
+|---|---|
+| `--teleop` | Record demos with the Oculus controller instead of evaluating a policy. `--policy-config` is not needed. Without `--config-file`, runs a practice loop that saves nothing. |
+| `--num-demos` | Number of demos per task. Overrides `num_rollouts` from the task config. |
+
+Each demo cycles through the task config's `instructions` like evaluation rollouts do. While recording, hold the grip button to move the arm and the trigger to close the gripper; press **A** to save the demo or **B** to discard and immediately re-record it. Resuming and re-recording specific demos work the same way as for evaluations; a re-recorded demo only replaces the earlier one once the new take is saved.
+
+Recordings are always finalized on disk, even if interrupted. Ctrl+C mid-demo stops recording and asks whether to keep the demo. If the program crashes (or Ctrl+C is pressed again at that prompt), the unfinished recording is kept in `demo_{n}_partial_<time>/` with its trajectory named `trajectory_partial.h5`, so conversion scripts that look for `trajectory.h5` skip it; it isn't counted as a demo and that slot is recorded again on the next run.
+
+Demos are saved in DROID's native format, so DROID's conversion tooling (e.g. `svo_to_mp4.py`, openpi's `convert_droid_data_to_lerobot.py`) can be pointed at them:
+
+```
+<results_dir>/teleop/{TaskName}_episode0/
+  demos.yaml                  # one entry per kept demo
+  demo_{n}/
+    trajectory.h5             # DROID trajectory (instruction stored in its attributes)
+    recordings/SVO/*.svo      # raw ZED recordings
+    metadata_<uuid>.json      # task name and language instruction
+```
+
 ## Repository Structure
 
 | File | Purpose |
 |---|---|
 | `scripts/run_eval.py` | Main entrypoint; builds the policy client and DROID environment, then runs an evaluation plan (or a test loop). |
 | `src/VLA_benchmarking/eval_control.py` | Drives the rollout loop against the robot: stepping the policy, recording video/state, and saving per-rollout results. |
+| `src/VLA_benchmarking/demo_control.py` | Teleop demo collection: records Oculus-controlled demos in DROID format, reusing the evaluation plan/resume/retake flow. |
 | `src/VLA_benchmarking/eval_planning.py` | Parses evaluation/task config files and result directory state into an executable plan of episodes. |
 | `src/VLA_benchmarking/eval_io.py` | Shared I/O utilities: loading policy/task configs, saving videos, writing result files. |
 | `src/VLA_benchmarking/eval_ui.py` | User-facing prompts and status messages: score input, rollout start/stop confirmations, test-loop instruction entry. |

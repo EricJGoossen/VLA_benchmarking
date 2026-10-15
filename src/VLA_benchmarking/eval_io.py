@@ -21,11 +21,13 @@ class RolloutStatus(Enum):
     VIDEO_DATA = 3    # rollout data, score data, and all expected data files are present
 
 
-def get_rollout_statuses(folder_path: str, filename: str) -> "list[RolloutStatus] | None":
+def get_rollout_statuses(folder_path: str, filename: str, score_keys: list = SCORE_RESULT_KEYS) -> "list[RolloutStatus] | None":
     """Inspect an eval results file and report status for every rollout slot.
 
     Returns None if the eval file doesn't exist yet, is empty, or has eval
     fields missing (i.e. write_eval_results hasn't successfully run yet).
+
+    A rollout counts as scored once every key in score_keys is present.
 
     Otherwise returns a list of RolloutStatus with length num_rollouts.
 
@@ -67,7 +69,7 @@ def get_rollout_statuses(folder_path: str, filename: str) -> "list[RolloutStatus
             rollout_statuses.append(RolloutStatus.NOT_FOUND)
             continue
 
-        is_scored = all(key in rollout for key in SCORE_RESULT_KEYS)
+        is_scored = all(key in rollout for key in score_keys)
         if not is_scored:
             rollout_statuses.append(RolloutStatus.ROLLOUT_DATA)
             continue

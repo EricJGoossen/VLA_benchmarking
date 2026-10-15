@@ -22,6 +22,22 @@ def start_rollout(instruction: str, rollout_num: int) -> None:
     input("Press Enter to begin the rollout...")
 
 
+def start_demo(instruction: str, demo_num: int, num_demos: int) -> None:
+    """Notify the operator that a teleop demo is starting with the given instruction."""
+
+    update_status(f"\n=== Demo {demo_num} ({demo_num + 1} of {num_demos}): '{instruction}' ===")
+    update_status("  Hold GRIP to move the arm, TRIGGER to close the gripper, click the JOYSTICK to re-align directions.")
+    update_status("  When done, press A on the controller to SAVE the demo, or B to DISCARD it and redo it.")
+    update_status("  (Ctrl+C stops recording and asks whether to keep the demo.)")
+    input("Set up the scene, then press Enter to start recording...")
+
+
+def confirm_keep_demo(demo_num: int) -> bool:
+    """Ask whether to keep a demo whose recording was stopped with Ctrl+C."""
+
+    return _prompt_yn(f"Keep demo {demo_num} as recorded so far?")
+
+
 def get_test_instruction() -> str:
     """Prompt the user to enter a test instruction for the open-loop test interface."""
     

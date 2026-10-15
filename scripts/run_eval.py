@@ -1,8 +1,10 @@
 import datetime
 import faulthandler
 import os
+import sys
+import traceback
 from VLA_benchmarking.policy_clients.abstract_policy_client import AbstractPolicyClient
-from VLA_benchmarking.system_config import Args
+from VLA_benchmarking.system_config import Args, DEMO_RESULTS_FILENAME, DEMO_SCORE_KEYS
 from VLA_benchmarking.eval_control import EvalControl
 from VLA_benchmarking.eval_io import load_config
 from VLA_benchmarking.eval_planning import build_plan
@@ -69,7 +71,62 @@ def _check_cameras_exist(env: RobotEnv, args: Args) -> None:
         )
 
 
+def main_teleop(args: Args):
+    """Collect teleop demos with the Oculus controller instead of running a policy."""
+    # Imported here so policy evals don't require the Oculus/ADB dependencies
+    from droid.controllers.oculus_controller import VRPolicy
+    from VLA_benchmarking.demo_control import DemoControl, TELEOP_POLICY_NAME
+
+    env = RobotEnv()
+    print("Created the droid env!")
+
+    _check_cameras_exist(env, args)
+
+    controller = DemoControl(args, env, VRPolicy())
+    print("Connected to Oculus controller!")
+
+    if not args.config_file:
+        controller.run_test_loop()
+        return
+
+    config = load_config(args.config_file)
+    results_dir = _resolve_results_dir(args, TELEOP_POLICY_NAME, config)
+
+    plan = build_plan(
+        args.config_file,
+        TELEOP_POLICY_NAME,
+        results_dir,
+        filename=DEMO_RESULTS_FILENAME,
+        score_keys=DEMO_SCORE_KEYS,
+        num_rollouts=args.num_demos,
+    )
+
+    try:
+        _run_plan(controller, plan)
+    except KeyboardInterrupt:
+        print("\nExiting.")
+
+
+def _exit_teleop(code: int) -> None:
+    """Exit immediately. DROID's Oculus reader leaves a non-daemon logcat thread
+    running forever, so a normal interpreter shutdown would hang waiting on it.
+    Every demo is fully written to disk before this point.
+    """
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(code)
+
+
 def main(args: Args):
+    if args.teleop:
+        try:
+            main_teleop(args)
+        except BaseException:
+            traceback.print_exc()
+            _exit_teleop(1)
+        print("Done.")
+        _exit_teleop(0)
+
     policy_client = AbstractPolicyClient.from_config(args.policy_config)
 
     policy_client.host = args.server_host or policy_client.host
